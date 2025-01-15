@@ -1,0 +1,109 @@
+--Explore E-commerce Sales DataSet
+WITH Total_invoices AS (
+   -- Total Number of invoices [16282]
+  SELECT 
+      count(DISTINCT orderid) as Total_invoices
+  FROM 
+    Orders),
+Total_customers AS (
+    -- Total Number of unique Customers [93]
+  SELECT 
+      COUNT(DISTINCT customerid) AS Total_customers
+  FROM 
+    Customers),
+Total_Categories as (    
+    -- Total number of unique Product Categories [8]
+  SELECT 
+      COUNT(DISTINCT categoryid) AS Total_Categories
+  FROM 
+    Categories),
+ Total_sales_amount as (
+    -- Total Sales Amount [448,475,298.7]
+   SELECT SUM(quantity*unitprice) as totalsales_amount
+   FROM 'order details'),
+sales_amount_after_discount as (
+  -- Total Sales Amount After Discount [448,386,633] 
+  SELECT SUM((quantity*unitprice)*(1-discount)) as sales_amount_after_discount
+  from 'order details'),
+Avg_Order_Value AS (
+    -- Average Order Value (AOV) [27,544]
+  SELECT totalsales_amount / Total_invoices AS Avg_Order_Value
+  FROM Total_sales_amount, Total_invoices),   
+sales_after_discount_per_order as (
+  -- Total Sales Amount After Discount per orderid
+  SELECT orderid, SUM((quantity*unitprice)*(1-discount)) as sales_per_order
+  from 'order details'
+  GROUP by orderid)
+   -- Total Sales Amount per Country
+ SELECT ShipCountry, sum(sales_per_order) AS sales_amount
+ FROM sales_after_discount_per_order as so
+ left join Orders as o
+ on o.OrderID = so.OrderID
+ GROUp by ShipCountry
+ order by sales_amount DESC;
+   -- Average Order Value (AOV) per COUNTRY [Argentina customers are the most spending customers per order]
+  SELECT o.shipcountry, SUM(od.quantity*od.unitprice)/count(DISTINCT o.orderid) as AOV
+  FROM orders as o
+  LEFT join 'Order Details' as od
+  on o.orderid = od.orderid
+  group by o.shipcountry
+  order by AOV DESC;
+   --Most Frequently Purchasing customers per country Per year
+SELECT o.ShipCountry, STRFTIME('%Y', shippeddate) 
+, COUNT(*) AS Purchase_Count,
+RANK()OVER(ORDER BY COUNT(*) DESC) AS rank
+FROM 'order details' as od
+LEFT JOIN Orders AS o
+ ON o.OrderID = od.OrderID
+GROUP BY o.ShipCountry, shippeddate;
+/*SELECT  STRFTIME('%Y', shippeddate) 
+from Orders
+ORDER BY shippeddate DESC;*/
+  --Most Frequently Purchased Items per country
+SELECT o.ShipCountry,od.productid, p.ProductName, COUNT(*) AS Purchase_Count,
+RANK()OVER(ORDER BY COUNT(*) DESC) AS rank
+FROM 'order details' as od
+LEFT JOIN Products AS p
+ ON p.ProductID= od.ProductID
+LEFT JOIN Orders AS o
+ ON o.OrderID = od.OrderID
+GROUP BY od.productid, o.ShipCountry;
+-- Variance in purchasing during different seasons 
+SELECT o.ShipCountry, p.ProductName, COUNT(*) AS Purchase_Count, STRFTIME('%m', o.orderdate) ,
+RANK()OVER(ORDER BY COUNT(*) DESC) AS rank
+FROM 'order details' as od
+LEFT JOIN Products AS p
+ ON p.ProductID= od.ProductID
+LEFT JOIN Orders AS o
+ ON o.OrderID = od.OrderID
+GROUP BY o.OrderDate, o.ShipCountry;
+-- Variance in purchasing during different seasons in USA (There is NO significant variance in purchasig rate across difference seasons)
+SELECT  COUNT(*) AS Purchase_Count, STRFTIME('%m', o.orderdate) ,
+RANK()OVER(ORDER BY COUNT(*) DESC) AS rank
+FROM 'order details' as od
+LEFT JOIN Orders AS o
+ ON o.OrderID = od.OrderID
+WHERE shipcountry='USA'
+GROUP BY o.OrderDate;
+---- Customer Retention (93 unique customers with customer retention rate 100%)
+SELECT 
+    count (DISTINCT customerid) as 'unique customers',
+    COUNT(DISTINCT CASE WHEN OrderCount > 1 THEN customerid END) AS 'Repeat Customers',
+(COUNT(DISTINCT CASE WHEN OrderCount > 1 THEN customerid END) * 100.0) / (COUNT(DISTINCT customerid)) AS Retention_Rate
+FROM (
+    SELECT 
+        customerid, 
+        COUNT(OrderID) AS OrderCount
+    FROM Orders
+    GROUP BY customerid
+) AS Customer_Order_Count;
+-- Discount Response
+SELECT 
+    STRFTIME('%Y-%m', o.OrderDate) AS OrderMonth,
+    SUM(od.Quantity * od.UnitPrice) AS Total_Sales,
+    SUM((od.Quantity * od.UnitPrice) * (1 - od.Discount)) AS Sales_After_Discount,
+    AVG(od.Discount) * 100 AS Avg_Discount_Percentage
+FROM 'order details' AS od
+LEFT JOIN Orders AS o ON od.OrderID = o.OrderID
+GROUP BY OrderMonth
+ORDER BY OrderMonth ;
